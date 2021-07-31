@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	crand "crypto/rand"
 	"crypto/sha1"
 	"database/sql"
@@ -34,8 +33,7 @@ const (
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
-	ctx           = context.Background()
-	rdb           = redis.NewClient()
+	client        *redis.Client
 )
 
 type Renderer struct {
@@ -85,17 +83,6 @@ func init() {
 	db.SetMaxOpenConns(20)
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
-
-	rdb = redis.NewClient(&redis.Options{
-		Addr:     "127.0.0.1:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
-
-	err := rdb.Set(ctx, "key", "value", 0).Err()
-	if err != nil {
-		panic(err)
-	}
 
 }
 
@@ -228,11 +215,19 @@ func getInitialize(c echo.Context) error {
 }
 
 func getIndex(c echo.Context) error {
-	val, err := rdb.Get(ctx, "key").Result()
+	key := "StringGetSet_Key"
+	// Set
+	err := client.Set(key, "StringGetSet_Val", 0).Err()
 	if err != nil {
-		panic(err)
+		fmt.Println("redis.Client.Set Error:", err)
 	}
-	fmt.Println("key", val)
+
+	// Get
+	val, err := client.Get(key).Result()
+	if err != nil {
+		fmt.Println("redis.Client.Get Error:", err)
+	}
+	fmt.Println(val)
 
 	userID := sessUserID(c)
 	if userID != 0 {
@@ -756,6 +751,12 @@ func main() {
 		Format: "request:\"${method} ${uri}\" status:${status} latency:${latency} (${latency_human}) bytes:${bytes_out}\n",
 	}))
 	e.Use(middleware.Static("../public"))
+
+	client = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
 
 	e.GET("/initialize", getInitialize)
 	e.GET("/", getIndex)
