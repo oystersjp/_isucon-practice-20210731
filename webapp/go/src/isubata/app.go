@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	crand "crypto/rand"
 	"crypto/sha1"
 	"database/sql"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-redis/redis/"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
@@ -32,6 +34,8 @@ const (
 var (
 	db            *sqlx.DB
 	ErrBadReqeust = echo.NewHTTPError(http.StatusBadRequest)
+	ctx           = context.Background()
+	rdb           = redis.NewClient()
 )
 
 type Renderer struct {
@@ -81,6 +85,18 @@ func init() {
 	db.SetMaxOpenConns(20)
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
+
+	rdb = redis.NewClient(&redis.Options{
+		Addr:     "127.0.0.1:6379",
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
+
+	err := rdb.Set(ctx, "key", "value", 0).Err()
+	if err != nil {
+		panic(err)
+	}
+
 }
 
 type User struct {
@@ -212,6 +228,12 @@ func getInitialize(c echo.Context) error {
 }
 
 func getIndex(c echo.Context) error {
+	val, err := rdb.Get(ctx, "key").Result()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("key", val)
+
 	userID := sessUserID(c)
 	if userID != 0 {
 		return c.Redirect(http.StatusSeeOther, "/channel/1")
